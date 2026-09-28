@@ -1,0 +1,10 @@
+.idea/
+.vscode/
+*.zip
+*.rar
+.DS_Store
+Thumbs.db
+*.hex
+*.elf
+build/
+.pio/

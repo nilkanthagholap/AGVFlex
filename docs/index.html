@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AGV Flex</title>
+<style>
+  :root {
+    --bg: #10141a;
+    --panel: #1a212b;
+    --panel-line: #2a3441;
+    --track: #3a4552;
+    --text: #e8ecef;
+    --text-dim: #8b95a1;
+    --text-faint: #5b6572;
+    --amber: #e2a03f;
+    --amber-dim: #6b5327;
+    --green: #4caf6d;
+    --red: #d9534f;
+    --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans);
+    min-height: 100vh; display: flex; justify-content: center; padding: 28px 16px 60px;
+  }
+  main { width: 100%; max-width: 480px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; }
+  
+  .tabs { display: flex; gap: 10px; margin-bottom: 22px; border-bottom: 1px solid var(--panel-line); padding-bottom: 10px; }
+  .tab-btn { background: transparent; border: none; color: var(--text-dim); font-size: 15px; font-weight: 600; cursor: pointer; padding: 6px 12px; border-radius: 6px; }
+  .tab-btn.active { background: var(--panel); color: var(--amber); }
+
+  .status { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+  .dot.connected { background: var(--green); }
+  .dot.connecting { background: var(--amber); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+
+  .connect-row { display: flex; gap: 10px; margin-bottom: 22px; }
+  .btn { flex: 1; padding: 12px; border-radius: 8px; border: 1px solid var(--amber-dim); background: transparent; color: var(--amber); font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn.solid { background: var(--amber); color: #1a1408; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .panel { margin-bottom: 22px; }
+  .panel-title { font-family: var(--mono); font-size: 11px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 10px; }
+  .hint { font-size: 12px; color: var(--text-faint); margin: 8px 0 0; line-height: 1.5; }
+
+  /* Track rendering & Pills */
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill { padding: 8px 12px; border-radius: 99px; border: 1px solid var(--panel-line); background: var(--panel); color: var(--text); font-size: 13px; cursor: pointer; }
+  .pill.selected { border-color: var(--green); color: var(--green); background: rgba(76,175,109,0.08); }
+  .pill:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .track { position: relative; padding: 4px 0 0; }
+  .node-row { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 30px; }
+  .node-row::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: var(--track); z-index: 0; }
+  .node-row::after { content: ""; position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; border-radius: 50%; background: var(--track); transform: translate(-50%, -50%); z-index: 1; }
+  .node-connector { width: 2px; height: 20px; background: var(--track); margin: -20px auto 0; }
+  .station-btn, .stub-btn { position: relative; z-index: 1; padding: 12px 6px; border-radius: 8px; border: 1px solid var(--panel-line); background: var(--panel); color: var(--text); text-align: center; cursor: pointer; }
+  .station-btn .id { display: block; font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-bottom: 4px; }
+  .station-btn .label { font-size: 13px; font-weight: 600; }
+  .station-btn:active:not(:disabled) { border-color: var(--amber); }
+  .station-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .stub-row { display: flex; justify-content: center; margin: -8px 0 30px; }
+  .stub-btn { width: 55%; }
+  .spacer { visibility: hidden; }
+
+  .sequence-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0; font-family: var(--mono); font-size: 13px; }
+  .seq-empty { color: var(--text-faint); font-family: var(--sans); }
+  .seq-chip { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; background: var(--panel); border: 1px solid var(--panel-line); }
+
+  /* Editor specific */
+  .editor-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; background: var(--panel); padding: 12px; border-radius: 8px; }
+  .editor-row input, .editor-row select { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--panel-line); background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 12px; }
+  .editor-row label { display: block; font-size: 10px; color: var(--text-dim); margin-bottom: 4px; text-transform: uppercase; }
+  .del-btn { grid-column: span 2; background: transparent; border: 1px solid var(--red); color: var(--red); padding: 6px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+
+  #log { font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: var(--panel); border-radius: 8px; padding: 10px; height: 110px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>AGV Flex</h1>
+    <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">disconnected</span></div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('dispatch')">Dispatch</button>
+    <button class="tab-btn" onclick="switchTab('editor')">Map Editor</button>
+  </div>
+
+  <div class="connect-row">
+    <button id="bleBtn" class="btn">Connect BLE</button>
+    <button id="serialBtn" class="btn">Connect USB</button>
+  </div>
+
+  <!-- DISPATCH TAB -->
+  <div id="dispatchView">
+    <section class="panel">
+      <div class="panel-title">Current position</div>
+      <div class="pill-row" id="calibRow"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-title">Track</div>
+      <div class="track" id="track"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-title">Plan Route</div>
+      <div class="pill-row" id="plannerPicker"></div>
+      <div class="sequence-row" id="sequenceRow"></div>
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button id="clearRouteBtn" class="btn">Clear</button>
+        <button id="sendRouteBtn" class="btn solid" disabled>Send Route</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- EDITOR TAB -->
+  <div id="editorView" style="display:none;">
+    <section class="panel">
+      <div class="panel-title">Track Layout</div>
+      <p class="hint" style="margin-bottom:12px">Define your track here. It is saved to this device automatically.</p>
+      <div id="editorList"></div>
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button class="btn" onclick="addStation()">+ Add Station</button>
+        <button class="btn solid" onclick="syncMapToRobot()" id="syncBtn">Sync to Robot</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="panel-title" style="margin-top:20px;">Activity</div>
+  <div id="log"></div>
+
+</main>
+
+<script>
+  const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
+  const CHAR_UUID    = '0000ffe1-0000-1000-8000-00805f9b34fb';
+  
+  // Default fallback layout if localStorage is empty
+  const defaultTrack = [
+    { id: 0, name: "Home", node: -1, dir: "N", kind: "T", dwell: 2000 },
+    { id: 1, name: "Station 1", node: 0, dir: "W", kind: "B", dwell: 10000 },
+    { id: 2, name: "Station 2", node: 0, dir: "E", kind: "B", dwell: 5000 }
+  ];
+
+  let STATIONS = JSON.parse(localStorage.getItem('agv_track')) || defaultTrack;
+
+  const state = { connected: false, calibrated: false, currentStationId: null, plannedRoute: [], mapSynced: false };
+  let transport = null, bleDevice = null, characteristic = null, serialPort = null, serialWriter = null, serialKeepReading = false;
+  
+  // -- UI Tabs --
+  function switchTab(tab) {
+    document.getElementById('dispatchView').style.display = tab === 'dispatch' ? 'block' : 'none';
+    document.getElementById('editorView').style.display = tab === 'editor' ? 'block' : 'none';
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    if (tab === 'editor') renderEditor();
+    if (tab === 'dispatch') renderAllStations();
+  }
+
+  // -- Editor Logic --
+  function renderEditor() {
+    const list = document.getElementById('editorList');
+    list.innerHTML = STATIONS.map((s, idx) => `
+      <div class="editor-row" data-idx="${idx}">
+        <div style="grid-column: span 2"><label>Name</label><input type="text" value="${s.name}" class="e-name"></div>
+        <div><label>Node ID</label><input type="number" value="${s.node}" class="e-node"></div>
+        <div>
+          <label>Direction</label>
+          <select class="e-dir">
+            <option value="N" ${s.dir==='N'?'selected':''}>North</option>
+            <option value="S" ${s.dir==='S'?'selected':''}>South</option>
+            <option value="E" ${s.dir==='E'?'selected':''}>East</option>
+            <option value="W" ${s.dir==='W'?'selected':''}>West</option>
+          </select>
+        </div>
+        <div>
+          <label>Type</label>
+          <select class="e-kind">
+            <option value="B" ${s.kind==='B'?'selected':''}>Bay (Turn)</option>
+            <option value="T" ${s.kind==='T'?'selected':''}>Trunk (In-line)</option>
+          </select>
+        </div>
+        <div><label>Dwell (ms)</label><input type="number" value="${s.dwell}" class="e-dwell"></div>
+        <button class="del-btn" onclick="delStation(${idx})">Remove</button>
+      </div>
+    `).join('');
+    
+    // Attach change listeners to autosave
+    list.querySelectorAll('input, select').forEach(el => el.addEventListener('change', saveEditor));
+  }
+
+  function addStation() {
+    // 1. Save any text currently typed in the editor
+    saveEditor(); 
+    
+    // 2. Create the new station
+    const nextId = STATIONS.length > 0 ? Math.max(...STATIONS.map(s => s.id)) + 1 : 0;
+    STATIONS.push({ id: nextId, name: `New Station ${nextId}`, node: 0, dir: "W", kind: "B", dwell: 2000 });
+    
+    // 3. Save the new array to local storage immediately
+    localStorage.setItem('agv_track', JSON.stringify(STATIONS));
+    state.mapSynced = false;
+    
+    // 4. Draw the new screen
+    renderEditor();
+  }
+
+  function delStation(idx) {
+    saveEditor(); // Save current text
+    STATIONS.splice(idx, 1); // Remove the target station
+    localStorage.setItem('agv_track', JSON.stringify(STATIONS)); // Save to storage
+    state.mapSynced = false;
+    renderEditor(); // Draw the updated screen
+  }
+
+  function saveEditor() {
+    const rows = document.querySelectorAll('.editor-row');
+    STATIONS = Array.from(rows).map((row, i) => ({
+      id: STATIONS[i].id, // keep original ID
+      name: row.querySelector('.e-name').value,
+      node: Number(row.querySelector('.e-node').value),
+      dir: row.querySelector('.e-dir').value,
+      kind: row.querySelector('.e-kind').value,
+      dwell: Number(row.querySelector('.e-dwell').value)
+    }));
+    localStorage.setItem('agv_track', JSON.stringify(STATIONS));
+    state.mapSynced = false; 
+  }
+
+  const delay = ms => new Promise(res => setTimeout(res, ms));
+
+  async function syncMapToRobot() {
+    if (!state.connected) { log("Connect to robot first.", "err"); return; }
+    log("Syncing layout to robot...");
+    await sendLine("C"); 
+    await delay(200);
+    for (let s of STATIONS) {
+      await sendLine(`M,${s.id},${s.node},${s.dir},${s.kind},${s.dwell}`);
+      await delay(100);
+    }
+    log("Sync complete.", "ok");
+    state.mapSynced = true;
+    renderAllStations();
+  }
+
+  // -- Dispatch Rendering --
+  const byId = id => STATIONS.find(s => s.id === id);
+  const getNodeIds = () => [...new Set(STATIONS.map(s => s.node))].sort((a, b) => a - b);
+
+  function renderTrack() {
+    const track = document.getElementById('track');
+    track.innerHTML = '';
+    const nodeIds = getNodeIds().slice().reverse();
+    nodeIds.forEach((n, idx) => {
+      const west = STATIONS.find(s => s.node === n && s.dir === 'W' && s.kind !== 'T');
+      const east = STATIONS.find(s => s.node === n && s.dir === 'E' && s.kind !== 'T');
+      const trunks = STATIONS.filter(s => s.node === n && s.kind === 'T');
+      
+      if (idx > 0) track.insertAdjacentHTML('beforeend', '<div class="node-connector"></div>');
+      if (idx === 0 && trunks.length) track.insertAdjacentHTML('beforeend', `<div class="stub-row"><button class="stub-btn" data-dispatch="${trunks[0].id}"><span class="id">${trunks[0].dwell/1000}s dwell</span><span class="label">${trunks[0].name}</span></button></div>`);
+      
+      if (west || east) {
+        track.insertAdjacentHTML('beforeend', `
+          <div class="node-row">
+            ${west ? `<button class="station-btn" data-dispatch="${west.id}"><span class="id">${west.dwell/1000}s dwell</span><span class="label">${west.name}</span></button>` : '<div class="spacer"></div>'}
+            ${east ? `<button class="station-btn" data-dispatch="${east.id}"><span class="id">${east.dwell/1000}s dwell</span><span class="label">${east.name}</span></button>` : '<div class="spacer"></div>'}
+          </div>`);
+      }
+      if (idx === nodeIds.length - 1 && trunks.length) track.insertAdjacentHTML('beforeend', `<div class="stub-row"><button class="stub-btn" data-dispatch="${trunks[0].id}"><span class="id">${trunks[0].dwell/1000}s dwell</span><span class="label">${trunks[0].name}</span></button></div>`);
+    });
+  }
+
+  function renderCalibRow() {
+    document.getElementById('calibRow').innerHTML = STATIONS.map(s => `<button class="pill ${s.id===state.currentStationId?'selected':''}" data-calib="${s.id}">${s.name}</button>`).join('');
+  }
+  function renderSequenceRow() {
+    const row = document.getElementById('sequenceRow');
+    if (state.plannedRoute.length === 0) row.innerHTML = '<span class="seq-empty">Tap stations to build route</span>';
+    else row.innerHTML = state.plannedRoute.map((id, i) => `${i > 0 ? '→' : ''}<span class="seq-chip">${byId(id)?byId(id).name:'?'} <button data-remove="${i}" style="background:none;border:none;color:#888;cursor:pointer">×</button></span>`).join('');
+    
+    document.getElementById('plannerPicker').innerHTML = STATIONS.map(s => `<button class="pill" data-add="${s.id}">${s.name}</button>`).join('');
+    refreshEnabled();
+  }
+
+  function renderAllStations() { renderTrack(); renderCalibRow(); renderSequenceRow(); refreshEnabled(); }
+
+  function refreshEnabled() {
+    const ready = state.connected && state.calibrated && state.mapSynced;
+    document.querySelectorAll('[data-dispatch]').forEach(btn => btn.disabled = !ready || Number(btn.dataset.dispatch) === state.currentStationId);
+    document.getElementById('sendRouteBtn').disabled = !(ready && state.plannedRoute.length > 0);
+  }
+
+  // -- Interaction Actions --
+  document.addEventListener('click', e => {
+    const calib = e.target.closest('[data-calib]');
+    if (calib) {
+      state.currentStationId = Number(calib.dataset.calib);
+      state.calibrated = true;
+      if (state.connected) sendLine('P' + state.currentStationId);
+      renderAllStations();
+    }
+    const disp = e.target.closest('[data-dispatch]');
+    if (disp && state.connected && state.mapSynced) sendLine('G' + disp.dataset.dispatch);
+    
+    const add = e.target.closest('[data-add]');
+    if (add) { state.plannedRoute.push(Number(add.dataset.add)); renderSequenceRow(); }
+    
+    const rem = e.target.closest('[data-remove]');
+    if (rem) { state.plannedRoute.splice(Number(rem.dataset.remove), 1); renderSequenceRow(); }
+  });
+
+  document.getElementById('clearRouteBtn').addEventListener('click', () => { state.plannedRoute = []; renderSequenceRow(); });
+  document.getElementById('sendRouteBtn').addEventListener('click', () => {
+    if (!state.connected || !state.mapSynced) return;
+    sendLine('R' + state.plannedRoute.join(','));
+    state.plannedRoute = []; renderSequenceRow();
+  });
+
+  // -- Communications Layer --
+  function log(msg, cls) {
+    const el = document.getElementById('log');
+    el.innerHTML += `<div class="${cls||''}">${new Date().toLocaleTimeString('en-US',{hour12:false})} ${msg}</div>`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function setConnected(isConn, name) {
+    state.connected = isConn;
+    document.getElementById('statusDot').className = 'dot ' + (isConn ? 'connected' : '');
+    document.getElementById('statusText').textContent = isConn ? name : 'disconnected';
+    document.getElementById('bleBtn').textContent = isConn && transport === 'ble' ? 'Disconnect' : 'Connect BLE';
+    document.getElementById('serialBtn').textContent = isConn && transport === 'serial' ? 'Disconnect' : 'Connect USB';
+    if (!isConn) { transport = null; state.mapSynced = false; }
+    refreshEnabled();
+  }
+
+  let notifyBuffer = '';
+ function handleLine(line) {
+    const [type, ...rest] = line.split(',');
+    if (type === 'ACK') return; 
+    
+    if (type === 'POS') { 
+      state.currentStationId = Number(rest[0]); 
+      state.calibrated = true; 
+      renderAllStations(); 
+      log(`Position: ${byId(Number(rest[0])).name}`, 'ok'); 
+    }
+    else if (type === 'ARR') {
+      // FIX: Actually update the current station and refresh the UI
+      state.currentStationId = Number(rest[0]);
+      renderAllStations();
+      log(`Arrived: ${byId(Number(rest[0])).name}`, 'ok');
+    }
+    else if (type === 'LEG') {
+      log(`En route to ${byId(Number(rest[1])).name}...`);
+    }
+    else if (type === 'DONE') {
+      log('Route complete.', 'ok');
+    }
+    else if (type === 'ERR') {
+      log(`Robot Error: ${rest.join(',')}`, 'err');
+    }
+  }
+
+  function ingestBytes(bytes) {
+    notifyBuffer += new TextDecoder().decode(bytes, {stream:true});
+    let idx;
+    while ((idx = notifyBuffer.indexOf('\n')) !== -1) {
+      const line = notifyBuffer.slice(0, idx).trim();
+      notifyBuffer = notifyBuffer.slice(idx+1);
+      if (line) handleLine(line);
+    }
+  }
+
+  async function sendLine(txt) {
+    if (!state.connected) return;
+    const payload = new TextEncoder().encode(txt + '\n');
+    if (transport === 'ble' && characteristic) {
+      if (characteristic.properties.writeWithoutResponse) await characteristic.writeValueWithoutResponse(payload);
+      else await characteristic.writeValue(payload);
+    } else if (transport === 'serial' && serialWriter) {
+      await serialWriter.write(payload);
+    }
+  }
+
+  document.getElementById('bleBtn').addEventListener('click', async () => {
+    if (state.connected) { if (bleDevice) bleDevice.gatt.disconnect(); return; }
+    try {
+      bleDevice = await navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE_UUID] }], optionalServices: [SERVICE_UUID] });
+      bleDevice.addEventListener('gattserverdisconnected', () => setConnected(false));
+      const srv = await bleDevice.gatt.connect();
+      characteristic = await (await srv.getPrimaryService(SERVICE_UUID)).getCharacteristic(CHAR_UUID);
+      await characteristic.startNotifications();
+      characteristic.addEventListener('characteristicvaluechanged', e => ingestBytes(new Uint8Array(e.target.value.buffer)));
+      transport = 'ble'; setConnected(true, bleDevice.name);
+      await syncMapToRobot();
+    } catch (e) { log(e.message, 'err'); }
+  });
+
+  document.getElementById('serialBtn').addEventListener('click', async () => {
+    if (state.connected) { serialKeepReading = false; serialPort.close(); setConnected(false); return; }
+    try {
+      serialPort = await navigator.serial.requestPort();
+      await serialPort.open({ baudRate: 9600 });
+      serialWriter = serialPort.writable.getWriter();
+      serialKeepReading = true; transport = 'serial';
+      setConnected(true, 'USB Serial');
+      
+      // Async read loop
+      (async () => {
+        while (serialPort.readable && serialKeepReading) {
+          const reader = serialPort.readable.getReader();
+          try { while (true) { const { value, done } = await reader.read(); if (done) break; ingestBytes(value); } } 
+          catch(e){} finally { reader.releaseLock(); }
+        }
+      })();
+
+      await delay(2000); // Wait for Uno bootloader
+      await syncMapToRobot();
+    } catch (e) { log(e.message, 'err'); }
+  });
+
+  renderAllStations();
+</script>
+</body>
+</html>
