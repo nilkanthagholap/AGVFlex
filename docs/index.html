@@ -221,6 +221,10 @@
 
   function saveEditor() {
     const rows = document.querySelectorAll('.editor-row');
+    // Only rebuild from the DOM when the editor actually has rows.
+    // Rebuilding from zero rows would replace STATIONS with [] and
+    // permanently delete the saved track.
+    if (rows.length === 0) return;
     STATIONS = Array.from(rows).map((row, i) => ({
       id: STATIONS[i].id, // keep original ID
       name: row.querySelector('.e-name').value,
@@ -230,7 +234,7 @@
       dwell: Number(row.querySelector('.e-dwell').value)
     }));
     localStorage.setItem('agv_track', JSON.stringify(STATIONS));
-    state.mapSynced = false; 
+    state.mapSynced = false;
   }
 
   const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -258,18 +262,22 @@
     track.innerHTML = '';
     const nodeIds = getNodeIds().slice().reverse();
     nodeIds.forEach((n, idx) => {
-      const west = STATIONS.find(s => s.node === n && s.dir === 'W' && s.kind !== 'T');
-      const east = STATIONS.find(s => s.node === n && s.dir === 'E' && s.kind !== 'T');
+      // A junction can have several stations on each side, so render
+      // ALL of them, not just the first match.
+      const west = STATIONS.filter(s => s.node === n && s.dir === 'W' && s.kind !== 'T');
+      const east = STATIONS.filter(s => s.node === n && s.dir === 'E' && s.kind !== 'T');
       const trunks = STATIONS.filter(s => s.node === n && s.kind === 'T');
-      
+
       if (idx > 0) track.insertAdjacentHTML('beforeend', '<div class="node-connector"></div>');
       if (idx === 0 && trunks.length) track.insertAdjacentHTML('beforeend', `<div class="stub-row"><button class="stub-btn" data-dispatch="${trunks[0].id}"><span class="id">${trunks[0].dwell/1000}s dwell</span><span class="label">${trunks[0].name}</span></button></div>`);
-      
-      if (west || east) {
+
+      if (west.length || east.length) {
+        const westBtns = west.map(s => `<button class="station-btn" data-dispatch="${s.id}"><span class="id">${s.dwell/1000}s dwell</span><span class="label">${s.name}</span></button>`).join('');
+        const eastBtns = east.map(s => `<button class="station-btn" data-dispatch="${s.id}"><span class="id">${s.dwell/1000}s dwell</span><span class="label">${s.name}</span></button>`).join('');
         track.insertAdjacentHTML('beforeend', `
           <div class="node-row">
-            ${west ? `<button class="station-btn" data-dispatch="${west.id}"><span class="id">${west.dwell/1000}s dwell</span><span class="label">${west.name}</span></button>` : '<div class="spacer"></div>'}
-            ${east ? `<button class="station-btn" data-dispatch="${east.id}"><span class="id">${east.dwell/1000}s dwell</span><span class="label">${east.name}</span></button>` : '<div class="spacer"></div>'}
+            ${westBtns || '<div class="spacer"></div>'}
+            ${eastBtns || '<div class="spacer"></div>'}
           </div>`);
       }
       if (idx === nodeIds.length - 1 && trunks.length) track.insertAdjacentHTML('beforeend', `<div class="stub-row"><button class="stub-btn" data-dispatch="${trunks[0].id}"><span class="id">${trunks[0].dwell/1000}s dwell</span><span class="label">${trunks[0].name}</span></button></div>`);
