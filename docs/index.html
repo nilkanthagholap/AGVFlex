@@ -197,16 +197,28 @@
 
   function addStation() {
     // 1. Save any text currently typed in the editor
-    saveEditor(); 
-    
-    // 2. Create the new station
+    saveEditor();
+
+    // 2. Create the new station, placed automatically so it lands on its
+    //    own junction instead of stacking on top of an existing one.
+    //    Layout: Home (id 0, trunk, node -1) at the bottom, then pairs per
+    //    junction going up — node 0: id 1 west + id 2 east,
+    //    node 1: id 3 west + id 4 east, node 2: id 5 west + id 6 east, ...
     const nextId = STATIONS.length > 0 ? Math.max(...STATIONS.map(s => s.id)) + 1 : 0;
-    STATIONS.push({ id: nextId, name: `New Station ${nextId}`, node: 0, dir: "W", kind: "B", dwell: 2000 });
-    
+    let node, dir, kind;
+    if (nextId === 0) {
+      node = -1; dir = "N"; kind = "T";            // Home
+    } else {
+      node = Math.floor((nextId - 1) / 2);
+      dir  = (nextId % 2 === 1) ? "W" : "E";      // odd = west/left, even = east/right
+      kind = "B";
+    }
+    STATIONS.push({ id: nextId, name: `New Station ${nextId}`, node, dir, kind, dwell: 2000 });
+
     // 3. Save the new array to local storage immediately
     localStorage.setItem('agv_track', JSON.stringify(STATIONS));
     state.mapSynced = false;
-    
+
     // 4. Draw the new screen
     renderEditor();
   }
@@ -262,22 +274,19 @@
     track.innerHTML = '';
     const nodeIds = getNodeIds().slice().reverse();
     nodeIds.forEach((n, idx) => {
-      // A junction can have several stations on each side, so render
-      // ALL of them, not just the first match.
-      const west = STATIONS.filter(s => s.node === n && s.dir === 'W' && s.kind !== 'T');
-      const east = STATIONS.filter(s => s.node === n && s.dir === 'E' && s.kind !== 'T');
+      // One station per side per junction: odd ids west/left, even ids east/right.
+      const west = STATIONS.find(s => s.node === n && s.dir === 'W' && s.kind !== 'T');
+      const east = STATIONS.find(s => s.node === n && s.dir === 'E' && s.kind !== 'T');
       const trunks = STATIONS.filter(s => s.node === n && s.kind === 'T');
 
       if (idx > 0) track.insertAdjacentHTML('beforeend', '<div class="node-connector"></div>');
       if (idx === 0 && trunks.length) track.insertAdjacentHTML('beforeend', `<div class="stub-row"><button class="stub-btn" data-dispatch="${trunks[0].id}"><span class="id">${trunks[0].dwell/1000}s dwell</span><span class="label">${trunks[0].name}</span></button></div>`);
 
-      if (west.length || east.length) {
-        const westBtns = west.map(s => `<button class="station-btn" data-dispatch="${s.id}"><span class="id">${s.dwell/1000}s dwell</span><span class="label">${s.name}</span></button>`).join('');
-        const eastBtns = east.map(s => `<button class="station-btn" data-dispatch="${s.id}"><span class="id">${s.dwell/1000}s dwell</span><span class="label">${s.name}</span></button>`).join('');
+      if (west || east) {
         track.insertAdjacentHTML('beforeend', `
           <div class="node-row">
-            ${westBtns || '<div class="spacer"></div>'}
-            ${eastBtns || '<div class="spacer"></div>'}
+            ${west ? `<button class="station-btn" data-dispatch="${west.id}"><span class="id">${west.dwell/1000}s dwell</span><span class="label">${west.name}</span></button>` : '<div class="spacer"></div>'}
+            ${east ? `<button class="station-btn" data-dispatch="${east.id}"><span class="id">${east.dwell/1000}s dwell</span><span class="label">${east.name}</span></button>` : '<div class="spacer"></div>'}
           </div>`);
       }
       if (idx === nodeIds.length - 1 && trunks.length) track.insertAdjacentHTML('beforeend', `<div class="stub-row"><button class="stub-btn" data-dispatch="${trunks[0].id}"><span class="id">${trunks[0].dwell/1000}s dwell</span><span class="label">${trunks[0].name}</span></button></div>`);
